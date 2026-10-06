@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,10 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Ensure GEMINI_API_KEY from settings is loaded into process environment
+    if hasattr(settings, "gemini_api_key") and settings.gemini_api_key:
+        os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
+
     # Mounted MCP apps do not automatically run their lifespan.
     async with business_mcp.session_manager.run():
         yield
@@ -26,7 +31,7 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
-# Safely parse allowed_origins whether configured as a comma-separated string or a list
+# Parse origins safely whether passed as list or comma-separated string
 origins = (
     [o.strip() for o in settings.allowed_origins.split(",")]
     if isinstance(settings.allowed_origins, str)
@@ -41,7 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MCP streamable HTTP application setup
+# MCP endpoint setup
 mcp_app = business_mcp.streamable_http_app(streamable_http_path="/")
 app.mount("/mcp", mcp_app)
 
@@ -66,7 +71,7 @@ async def mcp_info() -> dict:
 
 @app.get("/tools")
 async def tools() -> dict:
-    # Uses environment/settings dynamic URL instead of hardcoded 127.0.0.1
+    # Changed from hardcoded 127.0.0.1 to settings.mcp_server_url
     target = settings.mcp_server_url
     host = AgentHost(target)
     return await host.mcp.inspect()
