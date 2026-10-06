@@ -11,9 +11,6 @@ from common.schemas import AgentRequest, AgentResponse, HealthResponse
 
 settings = get_settings()
 
-# Build the MCP ASGI application once.
-mcp_asgi = business_mcp.streamable_http_app()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -29,21 +26,23 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
+# Safely parse allowed_origins whether configured as a comma-separated string or a list
+origins = (
+    [o.strip() for o in settings.allowed_origins.split(",")]
+    if isinstance(settings.allowed_origins, str)
+    else settings.allowed_origins
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    allow_origins=origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# MCP endpoint.
-# app.mount("/mcp", mcp_asgi)
-
-mcp_app = business_mcp.streamable_http_app(
-    streamable_http_path="/"
-)
-
+# MCP streamable HTTP application setup
+mcp_app = business_mcp.streamable_http_app(streamable_http_path="/")
 app.mount("/mcp", mcp_app)
 
 
@@ -67,16 +66,14 @@ async def mcp_info() -> dict:
 
 @app.get("/tools")
 async def tools() -> dict:
-    # This endpoint is intentionally simple for UI observability.
-    # The authoritative capability discovery remains MCP list_tools().
-    host = AgentHost("http://127.0.0.1:8000/mcp/")
+    # Uses environment/settings dynamic URL instead of hardcoded 127.0.0.1
+    target = settings.mcp_server_url
+    host = AgentHost(target)
     return await host.mcp.inspect()
 
 
 @app.post("/agent/run", response_model=AgentResponse)
 async def run_agent(request: AgentRequest) -> AgentResponse:
-    # In this reference deployment the API and MCP server share one process.
-    # The Agent Host still uses a real MCP Client over Streamable HTTP.
     target = settings.mcp_server_url
     host = AgentHost(target)
     result = await host.run(request.query)
