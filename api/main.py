@@ -1,4 +1,3 @@
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,13 +11,12 @@ from common.schemas import AgentRequest, AgentResponse, HealthResponse
 
 settings = get_settings()
 
+# Build the MCP ASGI application once.
+mcp_asgi = business_mcp.streamable_http_app()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Ensure GEMINI_API_KEY from settings is loaded into process environment
-    if hasattr(settings, "gemini_api_key") and settings.gemini_api_key:
-        os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
-
     # Mounted MCP apps do not automatically run their lifespan.
     async with business_mcp.session_manager.run():
         yield
@@ -28,27 +26,27 @@ app = FastAPI(
     title="MCP Agentic Business Copilot API",
     version="1.0.0",
     lifespan=lifespan,
-    redirect_slashes=False,
-)
-
-# Parse origins safely whether passed as list or comma-separated string
-origins = (
-    [o.strip() for o in settings.allowed_origins.split(",")]
-    if isinstance(settings.allowed_origins, str)
-    else settings.allowed_origins
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# MCP endpoint setup
-mcp_app = business_mcp.streamable_http_app(streamable_http_path="/")
-app.mount("/mcp", mcp_app)
+# MCP endpoint.
+app.mount("/mcp", mcp_asgi)
+
+
+def _mcp_target():
+    # API and MCP server share one process. On Render the service listens on
+    # $PORT (not 8000), and calling its own public URL from inside the
+    # container fails ("All connection attempts failed"), so by default use
+    # the in-process server object. Set MCP_SERVER_URL only for a *remote*
+    # MCP server.
+    return settings.mcp_server_url or business_mcp
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -71,31 +69,17 @@ async def mcp_info() -> dict:
 
 @app.get("/tools")
 async def tools() -> dict:
-    # Changed from hardcoded 127.0.0.1 to settings.mcp_server_url
-    target = settings.mcp_server_url
-    host = AgentHost(target)
+    # This endpoint is intentionally simple for UI observability.
+    # The authoritative capability discovery remains MCP list_tools().
+    host = AgentHost(_mcp_target())
     return await host.mcp.inspect()
 
 
-import logging
-from fastapi import HTTPException
-
-logger = logging.getLogger("uvicorn.error")
-
 @app.post("/agent/run", response_model=AgentResponse)
 async def run_agent(request: AgentRequest) -> AgentResponse:
-    try:
-        target = settings.mcp_server_url
-        logger.info(f"Running agent against MCP target: {target}")
-        host = AgentHost(target)
-        result = await host.run(request.query)
-        return AgentResponse(
-            answer=result["answer"],
-            trace=result["trace"],
-        )
-    except Exception as e:
-        logger.error(f"Agent Execution Failure: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Agent execution failed: {str(e)}"
-        )
+    host = AgentHost(_mcp_target())
+    result = await host.run(request.query)
+    return AgentResponse(
+        answer=result["answer"],
+        trace=result["trace"],
+    )
