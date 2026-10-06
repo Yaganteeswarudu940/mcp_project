@@ -1,7 +1,7 @@
 from typing import Any
 
 from agent.gemini import GeminiPlanner
-from agent.mcp_client import MCPClientAdapter
+from agent.local_tools import LocalToolAdapter
 from common.config import get_settings
 
 
@@ -14,8 +14,9 @@ class AgentHost:
     MCP Server owns business capabilities.
     """
 
-    def __init__(self, mcp_target: Any) -> None:
-        self.mcp = MCPClientAdapter(mcp_target)
+    def __init__(self, mcp_target: Any = None) -> None:
+        # Direct function calls: no MCP client, no HTTP.
+        self.mcp = LocalToolAdapter(mcp_target)
         self.planner = GeminiPlanner()
         self.settings = get_settings()
 
