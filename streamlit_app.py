@@ -4,7 +4,6 @@ import os
 import streamlit as st
 
 from agent.agent_host import AgentHost
-from business.mcp_server import business_mcp
 from common.config import get_settings
 
 
@@ -15,15 +14,13 @@ st.set_page_config(
 )
 
 st.title("🤖 MCP Agentic Business Copilot")
-st.caption("Gemini + MCP Host + MCP Client + MCP Server + FastAPI + Streamlit")
+st.caption("Gemini + Agent Host + Python business functions + Streamlit")
 
 # Streamlit Cloud secrets are exposed through st.secrets. Populate environment
 # variables so the shared config module can use the same code path.
 for key in [
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
-    "API_BASE_URL",
-    "MCP_SERVER_URL",
     "MAX_AGENT_STEPS",
 ]:
     if key in st.secrets and st.secrets[key] is not None:
@@ -33,22 +30,13 @@ settings = get_settings()
 
 with st.sidebar:
     st.header("Architecture")
-    if settings.api_base_url:
-        st.success("Remote FastAPI mode")
-        st.code(settings.api_base_url, language="text")
-    else:
-        st.info("In-process MCP demo mode")
-        st.write("Streamlit uses the MCP Client directly against an in-process MCP Server.")
+    st.info("Direct function-call mode")
+    st.write("Streamlit calls the Agent Host, which calls the Python business functions directly. No FastAPI, no HTTP.")
 
     st.divider()
-    st.write("**MCP concepts**")
+    st.write("**Concepts**")
     st.write("✓ Host / Agent")
-    st.write("✓ Client")
-    st.write("✓ Server")
     st.write("✓ Tools")
-    st.write("✓ Resources")
-    st.write("✓ Prompts")
-    st.write("✓ Streamable HTTP")
     st.write("✓ Agentic tool loop")
 
     st.divider()
@@ -60,7 +48,7 @@ st.markdown(
 ### Real-time business scenario
 
 Ask an operations agent about **orders, inventory, customers, returns, shipping delays,
-or support tickets**. The agent decides which MCP capabilities to use.
+or support tickets**. The agent decides which business tool to use.
 """
 )
 
@@ -91,25 +79,14 @@ if run:
         st.stop()
 
     try:
-        with st.spinner("Agent is reasoning and using MCP capabilities..."):
-            if settings.api_base_url:
-                import httpx
-
-                response = httpx.post(
-                    f"{settings.api_base_url.rstrip('/')}/agent/run",
-                    json={"query": query},
-                    timeout=90,
-                )
-                response.raise_for_status()
-                result = response.json()
-            else:
-                host = AgentHost(business_mcp)
-                result = asyncio.run(host.run(query))
+        with st.spinner("Agent is reasoning and calling business functions..."):
+            host = AgentHost()
+            result = asyncio.run(host.run(query))
 
         st.subheader("Answer")
         st.success(result["answer"])
 
-        st.subheader("Agent / MCP trace")
+        st.subheader("Agent trace")
         for item in result.get("trace", []):
             kind = item.get("type", "event")
 
@@ -119,14 +96,14 @@ if run:
 
             elif kind == "mcp_tool_call":
                 with st.expander(
-                    f"Step {item['step']} — MCP tool: {item['tool_name']}",
+                    f"Step {item['step']} — Tool: {item['tool_name']}",
                     expanded=True,
                 ):
                     st.json(item)
 
             elif kind == "mcp_tool_result":
                 with st.expander(
-                    f"Step {item['step']} — MCP result",
+                    f"Step {item['step']} — Tool result",
                     expanded=False,
                 ):
                     st.json(item["result"])
@@ -137,16 +114,12 @@ if run:
 
     except Exception as exc:
         st.error(f"Agent execution failed: {exc}")
-        st.info(
-            "Check GEMINI_API_KEY. If API_BASE_URL is configured, also verify that "
-            "the FastAPI service is reachable and exposes /agent/run and /mcp."
-        )
+        st.info("Check GEMINI_API_KEY and GEMINI_MODEL in the Streamlit secrets.")
 
 st.divider()
 st.markdown(
     """
-**Teaching point:** Gemini is the reasoning layer. The MCP Client is the protocol
-layer. The MCP Server owns business capabilities. This separation lets the same
-business capabilities be reused by different AI hosts.
+**Teaching point:** Gemini is the reasoning layer. The Agent Host runs the tool loop
+and calls plain Python business functions directly.
 """
 )
