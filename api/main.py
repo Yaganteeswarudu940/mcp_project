@@ -77,12 +77,25 @@ async def tools() -> dict:
     return await host.mcp.inspect()
 
 
+import logging
+from fastapi import HTTPException
+
+logger = logging.getLogger("uvicorn.error")
+
 @app.post("/agent/run", response_model=AgentResponse)
 async def run_agent(request: AgentRequest) -> AgentResponse:
-    target = settings.mcp_server_url
-    host = AgentHost(target)
-    result = await host.run(request.query)
-    return AgentResponse(
-        answer=result["answer"],
-        trace=result["trace"],
-    )
+    try:
+        target = settings.mcp_server_url
+        logger.info(f"Running agent against MCP target: {target}")
+        host = AgentHost(target)
+        result = await host.run(request.query)
+        return AgentResponse(
+            answer=result["answer"],
+            trace=result["trace"],
+        )
+    except Exception as e:
+        logger.error(f"Agent Execution Failure: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Agent execution failed: {str(e)}"
+        )
