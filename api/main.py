@@ -26,7 +26,6 @@ app = FastAPI(
     title="MCP Agentic Business Copilot API",
     version="1.0.0",
     lifespan=lifespan,
-    redirect_slashes=False,
 )
 
 app.add_middleware(
@@ -38,13 +37,16 @@ app.add_middleware(
 )
 
 # MCP endpoint.
-# app.mount("/mcp", mcp_asgi)
+app.mount("/mcp", mcp_asgi)
 
-mcp_app = business_mcp.streamable_http_app(
-    streamable_http_path="/"
-)
 
-app.mount("/mcp", mcp_app)
+def _mcp_target():
+    # API and MCP server share one process. On Render the service listens on
+    # $PORT (not 8000), and calling its own public URL from inside the
+    # container fails ("All connection attempts failed"), so by default use
+    # the in-process server object. Set MCP_SERVER_URL only for a *remote*
+    # MCP server.
+    return settings.mcp_server_url or business_mcp
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -69,16 +71,13 @@ async def mcp_info() -> dict:
 async def tools() -> dict:
     # This endpoint is intentionally simple for UI observability.
     # The authoritative capability discovery remains MCP list_tools().
-    host = AgentHost("http://127.0.0.1:8000/mcp/")
+    host = AgentHost(_mcp_target())
     return await host.mcp.inspect()
 
 
 @app.post("/agent/run", response_model=AgentResponse)
 async def run_agent(request: AgentRequest) -> AgentResponse:
-    # In this reference deployment the API and MCP server share one process.
-    # The Agent Host still uses a real MCP Client over Streamable HTTP.
-    target = settings.mcp_server_url
-    host = AgentHost(target)
+    host = AgentHost(_mcp_target())
     result = await host.run(request.query)
     return AgentResponse(
         answer=result["answer"],

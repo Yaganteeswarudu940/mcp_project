@@ -1,12 +1,6 @@
 import asyncio
 import os
-
 import streamlit as st
-
-from agent.agent_host import AgentHost
-from business.mcp_server import business_mcp
-from common.config import get_settings
-
 
 st.set_page_config(
     page_title="MCP Agentic Business Copilot",
@@ -14,22 +8,20 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🤖 MCP Agentic Business Copilot")
-st.caption("Gemini + MCP Host + MCP Client + MCP Server + FastAPI + Streamlit")
+# STEP 1: Populate os.environ FIRST before importing/calling settings
+for key, value in st.secrets.items():
+    if isinstance(value, str):
+        os.environ[key] = value
 
-# Streamlit Cloud secrets are exposed through st.secrets. Populate environment
-# variables so the shared config module can use the same code path.
-for key in [
-    "GEMINI_API_KEY",
-    "GEMINI_MODEL",
-    "API_BASE_URL",
-    "MCP_SERVER_URL",
-    "MAX_AGENT_STEPS",
-]:
-    if key in st.secrets and st.secrets[key] is not None:
-        os.environ[key] = str(st.secrets[key])
+# STEP 2: Import and initialize settings AFTER os.environ is set
+from common.config import get_settings
+from agent.agent_host import AgentHost
+from business.mcp_server import business_mcp
 
 settings = get_settings()
+
+st.title("🤖 MCP Agentic Business Copilot")
+st.caption("Gemini + MCP Host + MCP Client + MCP Server + FastAPI + Streamlit")
 
 with st.sidebar:
     st.header("Architecture")
