@@ -1,6 +1,6 @@
 from typing import Any
 
-from business.mcp_server import (
+from business.functions import (
     create_support_ticket,
     get_customer_profile,
     get_inventory_status,
