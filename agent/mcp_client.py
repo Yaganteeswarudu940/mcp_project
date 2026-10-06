@@ -7,7 +7,7 @@ class MCPClientAdapter:
     """Small adapter around the official MCP v2 Python Client."""
 
     def __init__(self, target: Any) -> None:
-        self.target = target
+        self.target = "http://127.0.0.1:8000/mcp/"
 
     async def inspect(self) -> dict[str, Any]:
         async with Client(self.target) as client:

@@ -38,7 +38,13 @@ app.add_middleware(
 )
 
 # MCP endpoint.
-app.mount("/mcp", mcp_asgi)
+# app.mount("/mcp", mcp_asgi)
+
+mcp_app = business_mcp.streamable_http_app(
+    streamable_http_path="/"
+)
+
+app.mount("/mcp", mcp_app)
 
 
 @app.get("/health", response_model=HealthResponse)
